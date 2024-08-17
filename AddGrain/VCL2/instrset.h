@@ -1,8 +1,8 @@
 /****************************  instrset.h   **********************************
 * Author:        Agner Fog
 * Date created:  2012-05-30
-* Last modified: 2021-05-20
-* Version:       2.01.04
+* Last modified: 2020-06-08
+* Version:       2.01.03
 * Project:       vector class library
 * Description:
 * Header file for various compiler-specific tasks as well as common
@@ -16,12 +16,29 @@
 *
 * For instructions, see vcl_manual.pdf
 *
-* (c) Copyright 2012-2021 Agner Fog.
+* (c) Copyright 2012-2020 Agner Fog.
 * Apache License version 2.0 or later.
 ******************************************************************************/
 
 #ifndef INSTRSET_H
-#define INSTRSET_H 20104
+#define INSTRSET_H 20102
+#if __arm64
+#include "sse2neon.h"
+
+// limit to 128byte, since we want to use ARM-neon
+#define MAX_VECTOR_SIZE 128
+
+//limit to sse4.2, sse2neon does not have any AVX instructions ( so far )
+#define INSTRSET 6
+
+//define unknown function
+#define _mm_getcsr() 1
+
+//simulate header included
+#define __X86INTRIN_H
+#endif
+// finally include vectorclass
+#include "vectorclass.h"
 
 
 // Allow the use of floating point permute instructions on integer vectors.
@@ -47,10 +64,11 @@
 // 10: AVX512BW/DQ/VL
 // In the future, INSTRSET = 11 may include AVX512VBMI and AVX512VBMI2, but this
 // decision cannot be made before the market situation for CPUs with these
-// instruction sets is better known
+// instruction sets is known (these future instruction set extensions are already
+// used in some VCL functions and tested with an emulator)
 
 // Find instruction set from compiler macros if INSTRSET is not defined.
-// Note: Some of these macros are not defined in Microsoft compilers
+// Note: Most of these macros are not defined in Microsoft compilers
 #ifndef INSTRSET
 #if defined ( __AVX512VL__ ) && defined ( __AVX512BW__ ) && defined ( __AVX512DQ__ )
 #define INSTRSET 10
@@ -79,10 +97,12 @@
 #endif // instruction set defines
 #endif // INSTRSET
 
-/* Old compilers need specific header files. Not needed any more:
+// Include the appropriate header file for intrinsic functions
 #if INSTRSET > 7                       // AVX2 and later
 #if defined (__GNUC__) && ! defined (__INTEL_COMPILER)
-#include <x86intrin.h>                 // x86intrin.h includes header files for whatever instruction sets are specified on the compiler command line
+#include <x86intrin.h>                 // x86intrin.h includes header files for whatever instruction
+                                       // sets are specified on the compiler command line, such as:
+                                       // xopintrin.h, fma4intrin.h
 #else
 #include <immintrin.h>                 // MS/Intel version of immintrin.h covers AVX and later
 #endif // __GNUC__
@@ -101,6 +121,18 @@
 #elif INSTRSET == 1
 #include <xmmintrin.h>                 // SSE
 #endif // INSTRSET
+
+#if INSTRSET >= 8 && !defined(__FMA__)
+// Assume that all processors that have AVX2 also have FMA3
+#if defined (__GNUC__) && ! defined (__INTEL_COMPILER)
+// Prevent error message in g++ and Clang when using FMA intrinsics with avx2:
+#if !defined(DISABLE_WARNING_AVX2_WITHOUT_FMA)
+#pragma message "It is recommended to specify also option -mfma when using -mavx2 or higher"
+#endif
+#elif ! defined (__clang__)
+#define __FMA__  1
+#endif
+#endif
 
 // AMD  instruction sets
 #if defined (__XOP__) || defined (__FMA4__)
@@ -123,31 +155,13 @@
 #include <fma4intrin.h> // must have both x86intrin.h and fma4intrin.h, don't know why
 #endif // __FMA4__
 
-*/
-
-#if INSTRSET >= 8 && !defined(__FMA__)
-// Assume that all processors that have AVX2 also have FMA3
-#if defined (__GNUC__) && ! defined (__INTEL_COMPILER)
-// Prevent error message in g++ and Clang when using FMA intrinsics with avx2:
-#if !defined(DISABLE_WARNING_AVX2_WITHOUT_FMA)
-#pragma message "It is recommended to specify also option -mfma when using -mavx2 or higher"
-#endif
-#elif ! defined (__clang__)
-#define __FMA__  1
-#endif
-#endif
-
-// Header files for non-vector intrinsic functions including _BitScanReverse(int), __cpuid(int[4],int), _xgetbv(int)
-#ifdef _MSC_VER                        // Microsoft compiler or compatible Intel compiler
-#include <intrin.h>
-#else
-#include <x86intrin.h>                 // Gcc or Clang compiler
-#endif
-
 
 #include <stdint.h>                    // Define integer types with known size
 #include <stdlib.h>                    // define abs(int)
 
+#ifdef _MSC_VER                        // Microsoft compiler or compatible Intel compiler
+#include <intrin.h>                    // define _BitScanReverse(int), __cpuid(int[4],int), _xgetbv(int)
+#endif // _MSC_VER
 
 
 // functions in instrset_detect.cpp:
@@ -161,14 +175,12 @@ namespace VCL_NAMESPACE {
     bool hasAVX512ER(void);            // true if AVX512ER instructions supported
     bool hasAVX512VBMI(void);          // true if AVX512VBMI instructions supported
     bool hasAVX512VBMI2(void);         // true if AVX512VBMI2 instructions supported
-
-    // function in physical_processors.cpp:
-    int physicalProcessors(int * logical_processors = 0);
-
 #ifdef VCL_NAMESPACE
 }
 #endif
 
+// functions in physical_processors.cpp:
+int physicalProcessors(int * logical_processors = 0);
 
 
 // GCC version
@@ -227,7 +239,6 @@ We need different version checks with and whithout __apple_build_version__
 #endif
 
 #if defined (GCC_VERSION) && GCC_VERSION < 99999 && !defined(__clang__)
-// To do: add gcc version that has these zero-extension intrinsics
 #define ZEXT_MISSING  // Gcc 7.4.0 does not have _mm256_zextsi128_si256 and similar functions
 #endif
 
@@ -240,7 +251,6 @@ namespace VCL_NAMESPACE {
 // V_DC is -256 in Vector class library version 1.xx
 // V_DC can be any value less than -1 in Vector class library version 2.00
 constexpr int V_DC = -256;
-
 
 
 /*****************************************************************************
@@ -281,7 +291,7 @@ static inline void cpuid(int output[4], int functionnumber, int ecxleaf = 0) {
 
 // Define popcount function. Gives sum of bits
 #if INSTRSET >= 6   // SSE4.2
-// The popcnt instruction is not officially part of the SSE4.2 instruction set,
+// popcnt instruction is not officially part of the SSE4.2 instruction set,
 // but available in all known processors with SSE4.2
 static inline uint32_t vml_popcnt(uint32_t a) {
     return (uint32_t)_mm_popcnt_u32(a);  // Intel intrinsic. Supported by gcc and clang
@@ -304,9 +314,11 @@ static inline uint32_t vml_popcnt(uint32_t a) {
     uint32_t e = d * 0x01010101;
     return   e >> 24;
 }
+
 static inline int32_t vml_popcnt(uint64_t a) {
     return vml_popcnt(uint32_t(a >> 32)) + vml_popcnt(uint32_t(a));
 }
+
 #endif
 
 // Define bit-scan-forward function. Gives index to lowest set bit
@@ -327,6 +339,7 @@ static inline uint32_t bit_scan_forward(uint64_t a) {
     uint32_t hi = uint32_t(a >> 32);
     return bit_scan_forward(hi) + 32;
 }
+
 #else  // other compilers
 static inline uint32_t bit_scan_forward(uint32_t a) {
     unsigned long r;
@@ -362,7 +375,7 @@ static inline uint32_t bit_scan_reverse(uint32_t a) {
 static inline uint32_t bit_scan_reverse(uint64_t a) {
     uint64_t r;
     __asm("bsrq %1, %0" : "=r"(r) : "r"(a) : );
-    return uint32_t(r);
+    return r;
 }
 #else   // 32 bit mode
 static inline uint32_t bit_scan_reverse(uint64_t a) {
@@ -390,7 +403,7 @@ static inline uint32_t bit_scan_reverse(uint64_t a) {
     else return bit_scan_reverse(uint32_t(ahi)) + 32;
 }
 #endif
-#endif 
+#endif
 
 // Same function, for compile-time constants
 constexpr int bit_scan_reverse_const(uint64_t const n) {
@@ -470,11 +483,11 @@ Rules for constexpr functions:
 
 > Do not make constexpr functions that return vector types. This requires type
   punning with a union, which is not allowed in constexpr functions under C++17.
-  It may be possible under C++20.
+  It may be possible under C++20
 
 *****************************************************************************/
 
-// Define type for encapsulated array to use as return type:
+// Define type for Encapsulated array to use as return type:
 template <typename T, int N>
 struct EList {
     T a[N];
@@ -806,10 +819,10 @@ constexpr uint64_t perm_flags(int const (&a)[V::size()]) {
         }
         if (fit) r |= perm_punpckl;
         // fit pshufd
-        if constexpr (elementsize >= 4) {
+        if (elementsize >= 4) {
             uint64_t p = 0;
             for (i = 0; i < lanesize; i++) {
-                if constexpr (lanesize == 4) {
+                if (lanesize == 4) {
                     p |= (lanepattern[i] & 3) << 2 * i;
                 }
                 else {  // lanesize = 2

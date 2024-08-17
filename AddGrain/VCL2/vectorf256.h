@@ -1,8 +1,8 @@
 /****************************  vectorf256.h   *******************************
 * Author:        Agner Fog
 * Date created:  2012-05-30
-* Last modified: 2021-11-21
-* Version:       2.01.04
+* Last modified: 2020-03-26
+* Version:       2.01.02
 * Project:       vector class library
 * Description:
 * Header file defining 256-bit floating point vector classes
@@ -18,7 +18,7 @@
 * Each vector object is represented internally in the CPU as a 256-bit register.
 * This header file defines operators and functions for these vectors.
 *
-* (c) Copyright 2012-2021 Agner Fog.
+* (c) Copyright 2012-2020 Agner Fog.
 * Apache License version 2.0 or later.
 *****************************************************************************/
 
@@ -158,11 +158,12 @@ public:
         return *this;
     }
     // Member function to change a bitfield to a boolean vector
-    // AVX version. Cannot use float instructions if subnormals are disabled
+    // AVX version. Use float instructions, treating integers as subnormal values
     Vec8fb & load_bits(uint8_t a) {
-        Vec4fb y0 = Vec4fb().load_bits(a);
-        Vec4fb y1 = Vec4fb().load_bits(uint8_t(a >> 4u));
-        *this = Vec8fb(y0, y1);
+        __m256 b1 = _mm256_castsi256_ps(_mm256_set1_epi32((int32_t)a));  // broadcast a
+        __m256 m2 = constant8f<1,2,4,8,0x10,0x20,0x40,0x80>();
+        __m256 d1 = _mm256_and_ps(b1, m2); // isolate one bit in each dword
+        ymm = _mm256_cmp_ps(d1, _mm256_setzero_ps(), 4);  // compare subnormal values with 0
         return *this;
     }
     // Type cast operator to convert to type Vec8ib used as Boolean for integer vectors
@@ -407,11 +408,12 @@ public:
         return Vec4q(_mm_castpd_si128(get_low()), _mm_castpd_si128(get_high()));
     }
     // Member function to change a bitfield to a boolean vector
-    // AVX version. Cannot use float instructions if subnormals are disabled
+    // AVX version. Use float instructions, treating integers as subnormal values
     Vec4db & load_bits(uint8_t a) {
-        Vec2db a0 = Vec2db().load_bits(a);
-        Vec2db a1 = Vec2db().load_bits(uint8_t(a>>2u));
-        *this = Vec4db(a0, a1);
+        __m256d b1 = _mm256_castsi256_pd(_mm256_set1_epi32((int32_t)a));  // broadcast a
+        __m256d m2 = _mm256_castps_pd(constant8f<1,0,2,0,4,0,8,0>());
+        __m256d d1 = _mm256_and_pd(b1, m2); // isolate one bit in each dword
+        ymm = _mm256_cmp_pd(d1, _mm256_setzero_pd(), 4);  // compare subnormal values with 0
         return *this;
     }
 #endif // AVX2
@@ -1045,7 +1047,7 @@ static inline Vec8f sign_combine(Vec8f const a, Vec8f const b) {
 
 // Categorization functions
 
-// Function is_finite: gives true for elements that are normal, subnormal or zero,
+// Function is_finite: gives true for elements that are normal, denormal or zero,
 // false for INF and NAN
 // (the underscore in the name avoids a conflict with a macro in Intel's mathimf.h)
 static inline Vec8fb is_finite(Vec8f const a) {
@@ -1105,7 +1107,7 @@ static inline Vec8fb is_nan(Vec8f const a) {
 #endif
 
 
-// Function is_subnormal: gives true for elements that are subnormal (denormal)
+// Function is_subnormal: gives true for elements that are denormal (subnormal)
 // false for finite numbers, zero, NAN and INF
 static inline Vec8fb is_subnormal(Vec8f const a) {
 #if INSTRSET >= 10  // compact boolean vectors
@@ -1421,7 +1423,7 @@ static inline Vec8f fraction(Vec8f const a) {
 // n  =    0 gives 1.0f
 // n >=  128 gives +INF
 // n <= -127 gives 0.0f
-// This function will never produce subnormals, and never raise exceptions
+// This function will never produce denormals, and never raise exceptions
 static inline Vec8f exp2(Vec8i const n) {
 #if INSTRSET >= 8  // 256 bit integer vectors are available, AVX2
     Vec8i t1 = max(n,  -0x7F);         // limit to allowed range
@@ -1884,7 +1886,7 @@ static inline Vec4d sign_combine(Vec4d const a, Vec4d const b) {
 #endif
 }
 
-// Function is_finite: gives true for elements that are normal, subnormal or zero,
+// Function is_finite: gives true for elements that are normal, denormal or zero,
 // false for INF and NAN
 static inline Vec4db is_finite(Vec4d const a) {
 #if INSTRSET >= 10  // compact boolean vectors
@@ -1945,7 +1947,7 @@ static inline Vec4db is_nan(Vec4d const a) {
 #endif
 
 
-// Function is_subnormal: gives true for elements that are subnormal (denormal)
+// Function is_subnormal: gives true for elements that are denormal (subnormal)
 // false for finite numbers, zero, NAN and INF
 static inline Vec4db is_subnormal(Vec4d const a) {
 #if INSTRSET >= 10  // compact boolean vectors
@@ -2254,7 +2256,7 @@ static inline Vec4d fraction(Vec4d const a) {
 // n  =     0 gives 1.0
 // n >=  1024 gives +INF
 // n <= -1023 gives 0.0
-// This function will never produce subnormals, and never raise exceptions
+// This function will never produce denormals, and never raise exceptions
 static inline Vec4d exp2(Vec4q const n) {
 #if INSTRSET >= 8  // 256 bit integer vectors are available
     Vec4q t1 = max(n,  -0x3FF);        // limit to allowed range
@@ -2306,10 +2308,6 @@ inline Vec4d change_sign(Vec4d const a) {
 *****************************************************************************/
 
 #if INSTRSET >= 8  // AVX2
-
-#if defined (__GXX_ABI_VERSION) && __GXX_ABI_VERSION < 1004 && !defined(__clang__)
-#error Compiler ABI version must be at least 4
-#endif
 
 // ABI version 4 or later needed on Gcc for correct mangling of 256-bit intrinsic vectors.
 // If necessary, compile with -fabi-version=0 to get the latest abi version
@@ -2505,7 +2503,7 @@ static inline Vec4d permute4(Vec4d const a) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm256_maskz_mov_pd(zero_mask<4>(indexs), y);
 #else               // use broad mask
-        constexpr EList <int64_t, 4> bm = zero_mask_broad<Vec4q>(indexs);
+        const EList <int64_t, 4> bm = zero_mask_broad<Vec4q>(indexs);
         //y = _mm256_and_pd(_mm256_castsi256_pd( Vec4q().load(bm.a) ), y);  // does not work with INSTRSET = 7
         __m256i bm1 = _mm256_loadu_si256((const __m256i*)(bm.a));
         y = _mm256_and_pd(_mm256_castsi256_pd(bm1), y);
@@ -2610,7 +2608,7 @@ static inline Vec8f permute8(Vec8f const a) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm256_maskz_mov_ps(zero_mask<8>(indexs), y);
 #else  // use broad mask
-        constexpr EList <int32_t, 8> bm = zero_mask_broad<Vec8i>(indexs);
+        const EList <int32_t, 8> bm = zero_mask_broad<Vec8i>(indexs);
         __m256i bm1 = _mm256_loadu_si256((const __m256i*)(bm.a));
         y = _mm256_and_ps(_mm256_castsi256_ps(bm1), y);
 #endif
@@ -2684,7 +2682,7 @@ static inline Vec4d blend4(Vec4d const a, Vec4d const b) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm256_maskz_mov_pd(zero_mask<4>(indexs), y);
 #else  // use broad mask
-        constexpr EList <int64_t, 4> bm = zero_mask_broad<Vec4q>(indexs);
+        const EList <int64_t, 4> bm = zero_mask_broad<Vec4q>(indexs);
         __m256i bm1 = _mm256_loadu_si256((const __m256i*)(bm.a));
         y = _mm256_and_pd(_mm256_castsi256_pd(bm1), y);
 #endif
@@ -2760,7 +2758,7 @@ static inline Vec8f blend8(Vec8f const a, Vec8f const b) {
 #if INSTRSET >= 10  // use compact mask
         y = _mm256_maskz_mov_ps(zero_mask<8>(indexs), y);
 #else  // use broad mask
-        constexpr EList <int32_t, 8> bm = zero_mask_broad<Vec8i>(indexs);
+        const EList <int32_t, 8> bm = zero_mask_broad<Vec8i>(indexs);
         __m256i bm1 = _mm256_loadu_si256((const __m256i*)(bm.a));
         y = _mm256_and_ps(_mm256_castsi256_ps(bm1), y);
 #endif
