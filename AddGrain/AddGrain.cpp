@@ -33,10 +33,12 @@
 
 using namespace std::literals;
 
-#ifdef ADDGRAIN_X86
+#if ADDGRAIN_X86|| defined(__arm__) || defined(__aarch64__)
 template<typename pixel_t, typename noise_t> extern void updateFrame_sse2(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
+#if ADDGRAIN_X86
 template<typename pixel_t, typename noise_t> extern void updateFrame_avx2(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
 template<typename pixel_t, typename noise_t> extern void updateFrame_avx512(const void* _srcp, void* _dstp, const int width, const int height, const ptrdiff_t stride, const int noisePlane, const int noiseOffs, const AddGrainData* const VS_RESTRICT d) noexcept;
+#endif
 #endif
 
 template<typename T>
@@ -307,6 +309,20 @@ static void VS_CC addgrainCreate(const VSMap* in, VSMap* out, [[maybe_unused]] v
                     d->step = 8;
                 }
             } else if ((opt == 0 && iset >= 2) || opt == 2) {
+                if (d->vi->format.bytesPerSample == 1) {
+                    d->updateFrame = updateFrame_sse2<uint8_t, int8_t>;
+                    d->step = 16;
+                } else if (d->vi->format.bytesPerSample == 2) {
+                    d->updateFrame = updateFrame_sse2<uint16_t, int16_t>;
+                    d->step = 8;
+                } else {
+                    d->updateFrame = updateFrame_sse2<float, float>;
+                    d->step = 4;
+                }
+            }
+#elif defined(__arm__) || defined(__aarch64__)
+            auto iset{ instrset_detect() };
+            if ((opt == 0 && iset >= 2) || opt == 2) {
                 if (d->vi->format.bytesPerSample == 1) {
                     d->updateFrame = updateFrame_sse2<uint8_t, int8_t>;
                     d->step = 16;

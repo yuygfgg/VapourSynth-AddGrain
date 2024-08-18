@@ -71,6 +71,38 @@ if host_machine.cpu_family().startswith('x86')
     dependencies: vapoursynth_dep,
     gnu_symbol_visibility: 'hidden'
   )
+
+elif host_machine.cpu_family().startswith('arm') or host_machine.cpu_family() == 'aarch64'
+  if gcc_syntax
+    project_args = ['-Ofast', '-ftree-vectorize', '-fopenmp', '-fno-math-errno', '-fno-trapping-math']
+  endif
+  add_project_arguments(project_args, language: 'cpp')
+
+  sources += [
+    'AddGrain/AddGrain_SSE2.cpp',
+    'AddGrain/VCL2/instrset.h',
+    'AddGrain/VCL2/instrset_detect.cpp',
+    'AddGrain/VCL2/vector_convert.h',
+    'AddGrain/VCL2/vectorclass.h',
+    'AddGrain/VCL2/vectorf128.h',
+    'AddGrain/VCL2/vectorf256.h',
+    'AddGrain/VCL2/vectorf256e.h',
+    'AddGrain/VCL2/vectorf512.h',
+    'AddGrain/VCL2/vectorf512e.h',
+    'AddGrain/VCL2/vectori128.h',
+    'AddGrain/VCL2/vectori256.h',
+    'AddGrain/VCL2/vectori256e.h',
+    'AddGrain/VCL2/vectori512.h',
+    'AddGrain/VCL2/vectori512e.h',
+    'AddGrain/VCL2/vectori512s.h',
+    'AddGrain/VCL2/vectori512se.h',
+    'AddGrain/VCL2/vectormath_common.h',
+    'AddGrain/VCL2/vectormath_exp.h',
+    'AddGrain/VCL2/vectormath_hyp.h',
+    'AddGrain/VCL2/vectormath_lib.h',
+    'AddGrain/VCL2/vectormath_trig.h'
+  ]
+
 endif
 
 shared_module('addgrain', sources,
