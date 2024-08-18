@@ -6,7 +6,7 @@
 #include <VapourSynth4.h>
 #include <VSHelper4.h>
 
-#ifdef ADDGRAIN_X86
+#if defined(ADDGRAIN_X86) || defined(__arm__) || defined(__aarch64__)
 #include "VCL2/vectorclass.h"
 #endif
 

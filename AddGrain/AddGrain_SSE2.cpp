@@ -1,4 +1,4 @@
-#ifdef ADDGRAIN_X86
+#if ADDGRAIN_X86|| defined(__arm__) || defined(__aarch64__)
 #include "AddGrain.h"
 
 template<typename pixel_t, typename noise_t>

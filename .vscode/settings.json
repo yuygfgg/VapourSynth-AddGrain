@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "*.cxlog": "ini",
+        "type_traits": "cpp"
+    }
+}
