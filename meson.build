@@ -74,7 +74,7 @@ if host_machine.cpu_family().startswith('x86')
 
 elif host_machine.cpu_family().startswith('arm') or host_machine.cpu_family() == 'aarch64'
   if gcc_syntax
-    project_args = ['-Ofast', '-ftree-vectorize', '-fopenmp', '-fno-math-errno', '-fno-trapping-math']
+    project_args = ['-O3', '-ftree-vectorize', '-fno-math-errno', '-fno-trapping-math']
   endif
   add_project_arguments(project_args, language: 'cpp')
 

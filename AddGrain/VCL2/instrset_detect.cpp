@@ -18,6 +18,7 @@ namespace VCL_NAMESPACE {
 #endif
 
 
+#ifdef __x86_64__
 // Define interface to xgetbv instruction
 static inline uint64_t xgetbv (int ctr) {
 #if (defined (_MSC_FULL_VER) && _MSC_FULL_VER >= 160040000) || (defined (__INTEL_COMPILER) && __INTEL_COMPILER >= 1200)
@@ -45,6 +46,7 @@ static inline uint64_t xgetbv (int ctr) {
 
 #endif
 }
+#endif
 
 /* find supported instruction set
     return value:
@@ -67,6 +69,11 @@ int instrset_detect(void) {
         return iset;                                       // called before
     }
     iset = 0;                                              // default value
+#if defined(__aarch64__) || defined(__arm__)
+    // Assume NEON support on ARM
+    iset = 6;  // Simulate support for SSE4.2 using NEON
+    return iset;
+#else
     int abcd[4] = {0,0,0,0};                               // cpuid results
     cpuid(abcd, 0);                                        // call cpuid function 0
     if (abcd[0] == 0) return iset;                         // no further cpuid function supported
@@ -103,8 +110,10 @@ int instrset_detect(void) {
     if ((abcd[1] & (1 << 31)) == 0) return iset;           // no AVX512VL
     if ((abcd[1] & 0x40020000) != 0x40020000) return iset; // no AVX512BW, AVX512DQ
     iset = 10;
+#endif
     return iset;
 }
+
 
 // detect if CPU supports the FMA3 instruction set
 bool hasFMA3(void) {
